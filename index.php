@@ -147,6 +147,10 @@
         </div>
     </div>
 
+    <footer class="text-center py-3 text-muted border-top mt-5">
+        <small>© <?php echo date("Y"); ?> Photobooth App &middot; Built with Gemini AI Assistant by Jom</small>
+    </footer>
+
     <svg style="display: none;">
         <defs>
             <filter id="svg-pink-flash">

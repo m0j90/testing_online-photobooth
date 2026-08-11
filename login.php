@@ -47,6 +47,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
         </div>
     </div>
+
+    <footer class="text-center py-3 text-muted border-top mt-5">
+        <small>© <?php echo date("Y"); ?> Photobooth App &middot; Built with Gemini AI Assistant by Jom</small>
+    </footer>
     
 </body>
 </html>
