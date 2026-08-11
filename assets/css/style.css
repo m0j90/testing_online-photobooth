@@ -1,0 +1,66 @@
+.text-shadow {
+    text-shadow: 0px 4px 12px rgba(0, 0, 0, 0.7);
+}
+
+.pointer-events-none {
+    pointer-events: none;
+}
+
+.object-fit-cover {
+    object-fit: cover;
+}
+
+.filter-y2k-flash {
+    filter: brightness(130%)
+    contrast(140%)
+    saturate(130%);
+}
+.filter-digital-cam {
+    filter: brightness(110%)
+    contrast(125%)
+    saturate(85%);
+}
+.filter-disposable-cam {
+    filter: sepia(25%)
+    contrast(120%)
+    brightness(105%)
+    saturate(140%);
+}
+.filter-film-2000s {
+    filter: sepia(35%)
+    hue-rotate(-10deg)
+    contrast(115%)
+    saturate(120%);
+}
+.filter-soft-dream {
+    filter: brightness(115%)
+    contrast(85%)
+    blur(0.5px)
+    saturate(110%);
+}
+.filter-bw-flash {
+    filter: grayscale(100%)
+    brightness(140%)
+    contrast(160%);
+}
+.filter-pink-flash {
+    filter: url('#svg-pink-flash')
+    brightness(115%)
+    contrast(120%);
+}
+.filter-cyber-blue {
+    filter: url('#svg-cyber-blue')
+    brightness(105%)
+    contrast(125%);
+}
+.filter-polaroid {
+    filter: sepia(20%)
+    contrast(110%)
+    brightness(110%)
+    saturate(90%);
+}
+.filter-retro-vhs {
+    filter: contrast(130%)
+    saturate(160%)
+    hue-rotate(15deg);
+}
