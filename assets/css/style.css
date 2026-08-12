@@ -65,8 +65,8 @@
     hue-rotate(15deg);
 }
 
-#webcam {
-    /* Forces GPU rendering for smooth live preview filters on mobile */
-    will-change: filter;
-    transform: translateZ(0);
+.filter-thermal {
+    filter: url('#svg-thermal')
+    contrast(175%)
+    saturate(200%);
 }
