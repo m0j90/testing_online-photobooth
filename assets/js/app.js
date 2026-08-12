@@ -44,8 +44,8 @@ document.addEventListener('DOMContentLoaded', () => {
             case 'retro-vhs':
                 return 'contrast(130%) saturate(160%) hue-rotate(15deg)';
             case 'thermal':
-                // Applies segmented filter + extreme contrast for sharp color separation
-                return 'url(#svg-thermal) contrast(250%) saturate(150%)';
+                // Smooth thermal camera color mapping
+                return 'url(#svg-thermal)';
             default:
                 // Handles 'none', 'grayscale(100%)', and 'sepia(100%)' directly
                 return val;

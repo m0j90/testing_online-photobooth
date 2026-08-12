@@ -169,36 +169,23 @@
                     0   0   0   1 0" />
             </filter>
             <filter id="svg-thermal">
-                <!-- 1. Extract Luminance to Grayscale (gray result) -->
+                <!-- 1. Desaturate to pure brightness (0.0 to 1.0) -->
                 <feColorMatrix type="matrix" values="
                     0.33 0.33 0.33 0 0
                     0.33 0.33 0.33 0 0
                     0.33 0.33 0.33 0 0
                     0    0    0    1 0" result="gray" />
 
-                <!-- 2. Segment colors based on brightness: Dark->Cyan, Mid/High->Yellow/Orange (segmented result) -->
-                <feComponentTransfer in="gray" result="segmented">
-                    <feFuncR type="table" tableValues="0.0  0.0  1.0  1.0"/>
-                    <feFuncG type="table" tableValues="0.0  0.8  1.0  0.1"/>
-                    <feFuncB type="table" tableValues="0.9  1.0  0.0  0.0"/>
+                <!-- 2. Smooth Thermal Gradient Map -->
+                <!-- Maps brightness linearly: Dark Blue -> Blue -> Cyan -> Green -> Yellow -> Red -> White -->
+                <feComponentTransfer in="gray">
+                    <!-- Red Channel: Low in darks, turns on in mid-brights, maxes out at highlights -->
+                    <feFuncR type="table" tableValues="0.0  0.0  0.0  0.0  1.0  1.0  1.0"/>
+                    <!-- Green Channel: Off in darks, peaks in midtones, off in bright reds, back on for white -->
+                    <feFuncG type="table" tableValues="0.0  0.0  1.0  1.0  0.8  0.0  1.0"/>
+                    <!-- Blue Channel: High in darks/shadows, drops off as image gets bright -->
+                    <feFuncB type="table" tableValues="0.6  1.0  1.0  0.0  0.0  0.0  1.0"/>
                 </feComponentTransfer>
-                
-                <!-- 3. Isolate the edge between dark/light values (glowing_edge_base result) -->
-                <feColorMatrix in="gray" type="matrix" values="
-                    -5   -5   -5  0  5
-                    -5   -5   -5  0  5
-                    -5   -5   -5  0  5
-                    0    0    0  1  0" result="glowing_edge_base" />
-                    
-                <!-- 4. Boost the isolated edge to pure Neon Green (glowing_green result) -->
-                <feComponentTransfer in="glowing_edge_base" result="glowing_green">
-                    <feFuncR type="table" tableValues="0.0 0.0 0.0"/>
-                    <feFuncG type="table" tableValues="0.0 1.0 1.0"/>
-                    <feFuncB type="table" tableValues="0.0 0.0 0.0"/>
-                </feComponentTransfer>
-
-                <!-- 5. Composit the neon green line over the segmented thermal color map (final output) -->
-                <feComposite in="glowing_green" in2="segmented" operator="over" />
             </filter>
         </defs>
     </svg>
