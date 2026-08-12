@@ -84,7 +84,7 @@
                                     <option value="cyber-blue">Cyber Blue</option>
                                     <option value="polaroid">Polaroid</option>
                                     <option value="retro-vhs">Retro VHS</option>
-                                    <option value="thermal">Thermal Heatmap</option>
+                                    <option value="thermal">Thermal</option>
                                 </select>
                             </div>
 
@@ -169,12 +169,12 @@
                     0   0   0   1 0" />
             </filter>
             <filter id="svg-thermal">
-                <!-- Converts luminance into a thermal spectrum: Blue -> Magenta -> Red -> Yellow -> White -->
+                <!-- 1. Invert colors & map luminance to the iOS Neon Thermal palette (Cyan/Magenta/Yellow/White) -->
                 <feColorMatrix type="matrix" values="
-                    1.5 -0.5 -0.5  0  0.2
-                    -0.5  1.5 -0.5  0  0.1
-                    1.5 -1.0  0.0  0 -0.2
-                    0.0  0.0  0.0  1  0.0" />
+                -1.0   0.8   1.2   0   0.1
+                    0.8  -0.6   1.2   0   0.0
+                    1.2   1.0  -1.5   0   0.3
+                    0.0   0.0   0.0   1   0.0" />
             </filter>
         </defs>
     </svg>

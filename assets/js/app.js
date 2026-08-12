@@ -44,8 +44,8 @@ document.addEventListener('DOMContentLoaded', () => {
             case 'retro-vhs':
                 return 'contrast(130%) saturate(160%) hue-rotate(15deg)';
             case 'thermal':
-                // Combines the SVG thermal matrix with contrast boosting for sharp heat gradients
-                return 'url(#svg-thermal) contrast(175%) saturate(200%)';
+                // Applies inversion-based thermal mapping with high contrast and saturated glowing edges
+                return 'url(#svg-thermal) invert(85%) hue-rotate(180deg) contrast(200%) saturate(250%)';
             default:
                 // Handles 'none', 'grayscale(100%)', and 'sepia(100%)' directly
                 return val;

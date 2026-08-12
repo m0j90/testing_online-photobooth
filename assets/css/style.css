@@ -66,5 +66,5 @@
 }
 
 .filter-thermal {
-    filter: url('#svg-thermal') contrast(175%) saturate(200%);
+    filter: url('#svg-thermal') invert(85%) hue-rotate(180deg) contrast(200%) saturate(250%);
 }
