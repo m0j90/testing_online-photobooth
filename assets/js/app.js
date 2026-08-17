@@ -13,16 +13,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const qrContainer = document.getElementById('qrcode');
     const cameraSelect = document.getElementById('cameraSelect');
     
+    // Preview Canvas Elements
     const previewCanvas = document.getElementById('stripPreviewCanvas');
     const previewCtx = previewCanvas ? previewCanvas.getContext('2d') : null;
 
     let currentStream = null;
 
+    // Fixed internal frame aspect ratio standards (Standard 4:3 Laptop/Photobooth slot)
     const TARGET_SLOT_WIDTH = 640;
     const TARGET_SLOT_HEIGHT = 480;
 
-    // iOS/Safari Fix: Converted all SVG url() matrices to pure CSS equivalents.
-    // Safari's Canvas 2D ctx.filter engine natively supports these, ensuring they bake into the final download.
+    // Helper: Maps dropdown values to their respective CSS filter values
     function getSelectedFilterCSS() {
         const val = filterSelect.value;
         switch (val) {
@@ -38,24 +39,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 return 'brightness(115%) contrast(85%) blur(0.5px) saturate(110%)';
             case 'bw-flash':
                 return 'grayscale(100%) brightness(140%) contrast(160%)';
+            case 'pink-flash':
+                return 'url(#svg-pink-flash) brightness(115%) contrast(120%)';
+            case 'cyber-blue':
+                return 'url(#svg-cyber-blue) brightness(105%) contrast(125%)';
             case 'polaroid':
                 return 'sepia(20%) contrast(110%) brightness(110%) saturate(90%)';
             case 'retro-vhs':
                 return 'contrast(130%) saturate(160%) hue-rotate(15deg)';
-            
-            // Pure CSS Approximations of the previous SVG filters for WebKit compatibility
-            case 'pink-flash':
-                return 'sepia(100%) hue-rotate(290deg) saturate(250%) brightness(110%) contrast(115%)';
-            case 'cyber-blue':
-                return 'sepia(100%) hue-rotate(190deg) saturate(300%) brightness(105%) contrast(120%)';
             case 'thermal':
-                return 'invert(100%) sepia(100%) hue-rotate(130deg) saturate(400%) contrast(150%)';
-                
+                return 'url(#svg-thermal)';
             default:
-                return 'none';
+                return val;
         }
     }
 
+    // Helper: Center-crops video frame to fit uniform slot sizes regardless of mobile/desktop orientation
     function drawCroppedVideo(ctx, videoEl, destX, destY, destWidth, destHeight) {
         const vWidth = videoEl.videoWidth || destWidth;
         const vHeight = videoEl.videoHeight || destHeight;
@@ -76,23 +75,30 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.drawImage(videoEl, srcX, srcY, srcWidth, srcHeight, destX, destY, destWidth, destHeight);
     }
 
-    // Double-canvas pixel baking ensures CSS filters are permanently rasterized for iOS
+    // Helper: Creates a baked filtered canvas frame compatible across iOS/iPadOS Safari and Desktop
     function createFilteredFrameCanvas(sourceVideo, width, height) {
-        const rawCanvas = document.createElement('canvas');
-        const rawCtx = rawCanvas.getContext('2d');
-        rawCanvas.width = width;
-        rawCanvas.height = height;
+        const tempCanvas = document.createElement('canvas');
+        const tempCtx = tempCanvas.getContext('2d');
+        tempCanvas.width = width;
+        tempCanvas.height = height;
 
-        drawCroppedVideo(rawCtx, sourceVideo, 0, 0, width, height);
+        // Apply clean cropped video feed first
+        drawCroppedVideo(tempCtx, sourceVideo, 0, 0, width, height);
 
+        // Create secondary offscreen canvas to force filter baking
         const bakedCanvas = document.createElement('canvas');
         const bakedCtx = bakedCanvas.getContext('2d');
         bakedCanvas.width = width;
         bakedCanvas.height = height;
 
-        bakedCtx.filter = getSelectedFilterCSS();
-        bakedCtx.drawImage(rawCanvas, 0, 0);
+        const currentFilter = getSelectedFilterCSS();
+        try {
+            bakedCtx.filter = currentFilter;
+        } catch (e) {
+            bakedCtx.filter = 'none';
+        }
 
+        bakedCtx.drawImage(tempCanvas, 0, 0);
         return bakedCanvas;
     }
 
@@ -100,6 +106,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderLivePreview() {
         if (!previewCanvas || !previewCtx) return;
 
+        // Draw Background Frame Color
         previewCtx.fillStyle = frameColorInput.value;
         previewCtx.fillRect(0, 0, previewCanvas.width, previewCanvas.height);
 
@@ -108,11 +115,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const xOffset = 20;
         const yPositions = [20, 175, 330];
 
+        // Process live filtered frame canvas
         let liveFilteredFrame = null;
         if (video.readyState === video.HAVE_ENOUGH_DATA) {
             liveFilteredFrame = createFilteredFrameCanvas(video, frameWidth, frameHeight);
         }
 
+        // Draw camera video feed into 3 slots
         yPositions.forEach((y) => {
             if (liveFilteredFrame) {
                 previewCtx.drawImage(liveFilteredFrame, xOffset, y, frameWidth, frameHeight);
@@ -121,6 +130,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 previewCtx.fillRect(xOffset, y, frameWidth, frameHeight);
             }
 
+            // Draw chosen sticker preview
             const selectedSticker = stickerSelect.value;
             if (selectedSticker !== 'none') {
                 previewCtx.fillStyle = textColorInput.value;
@@ -129,6 +139,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
+        // Draw Live Footer Text
         previewCtx.fillStyle = textColorInput.value;
         previewCtx.font = "bold 16px sans-serif";
         previewCtx.textAlign = "center";
@@ -148,6 +159,7 @@ document.addEventListener('DOMContentLoaded', () => {
     async function initCamera() {
         try {
             await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+
             const devices = await navigator.mediaDevices.enumerateDevices();
             const videoDevices = devices.filter(device => device.kind === 'videoinput');
 
@@ -206,6 +218,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Live update camera feed filter
     filterSelect.addEventListener('change', () => {
         video.style.filter = getSelectedFilterCSS();
     });
@@ -215,7 +228,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function captureSingleShot() {
         return new Promise((resolve) => {
+            // Generates a fully baked filtered frame canvas
             const filteredCanvas = createFilteredFrameCanvas(video, TARGET_SLOT_WIDTH, TARGET_SLOT_HEIGHT);
+
+            // Convert baked canvas into an Image element for master strip assembly
             const img = new Image();
             img.onload = () => resolve(img);
             img.src = filteredCanvas.toDataURL('image/png');
@@ -246,6 +262,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const stripDataUrl = assemblePhotoStrip(capturedImages);
             
+            // Hide preview canvas and show captured image output
             if (previewCanvas) previewCanvas.style.display = "none";
             const previewTitle = document.getElementById('preview-title');
             if (previewTitle) previewTitle.textContent = "Your Photo Strip";
@@ -253,6 +270,7 @@ document.addEventListener('DOMContentLoaded', () => {
             preview.src = stripDataUrl;
             preview.style.display = "block";
 
+            // Set fallback direct download href immediately
             downloadBtn.href = stripDataUrl;
             downloadBtn.style.display = 'inline-block';
 
@@ -268,6 +286,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const masterCanvas = document.createElement('canvas');
         const ctx = masterCanvas.getContext('2d');
 
+        // Uniform slot dimensions guarantees identical strip size on smartphones and laptops
         const photoWidth = TARGET_SLOT_WIDTH;
         const photoHeight = TARGET_SLOT_HEIGHT;
 
