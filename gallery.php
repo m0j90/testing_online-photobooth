@@ -74,24 +74,58 @@
             <div class="row row-cols-1 row-cols-sm-2 row-cols-md-3 row-cols-lg-4 g-4 mb-4">
                 
             <?php foreach ($photos as $photo) { ?>
-                    <?php $imagePath = "uploads/" . ($photo['filename']); ?>
+                    <?php 
+                        $imagePath = "uploads/" . ($photo['filename']);
+                        $gifFilename = isset($photo['gif_filename']) ? $photo['gif_filename'] : null;
+                        $gifPath = $gifFilename ? "uploads/" . $gifFilename : null;
+                    ?>
                     <div class="col">
                         <div class="card h-100 shadow-sm border-0">
-                            <img src="<?= $imagePath ?>" class="card-img-top bg-dark" alt="Photobooth Strip" style="object-fit: contain; height: 300px;">
+                            
+                            <!-- Tabbed or Split Preview Container -->
+                            <div class="bg-dark p-2 text-center rounded-top position-relative" style="min-height: 280px;">
+                                <?php if ($gifPath && file_exists($gifPath)) { ?>
+                                    <ul class="nav nav-pills nav-fill mb-2 bg-secondary rounded p-1" id="pills-tab-<?= $photo['id'] ?>" role="tablist">
+                                        <li class="nav-item" role="presentation">
+                                            <button class="nav-link active btn-sm text-white py-1 px-2" id="pills-strip-tab-<?= $photo['id'] ?>" data-bs-toggle="pill" data-bs-target="#pills-strip-<?= $photo['id'] ?>" type="button" role="tab">📷 Strip</button>
+                                        </li>
+                                        <li class="nav-item" role="presentation">
+                                            <button class="nav-link btn-sm text-white py-1 px-2" id="pills-gif-tab-<?= $photo['id'] ?>" data-bs-toggle="pill" data-bs-target="#pills-gif-<?= $photo['id'] ?>" type="button" role="tab">🎞️ GIF</button>
+                                        </li>
+                                    </ul>
+                                    <div class="tab-content" id="pills-tabContent-<?= $photo['id'] ?>">
+                                        <div class="tab-pane fade show active" id="pills-strip-<?= $photo['id'] ?>" role="tabpanel">
+                                            <img src="<?= $imagePath ?>" class="img-fluid rounded" alt="Photobooth Strip" style="object-fit: contain; height: 230px;">
+                                        </div>
+                                        <div class="tab-pane fade" id="pills-gif-<?= $photo['id'] ?>" role="tabpanel">
+                                            <img src="<?= $gifPath ?>" class="img-fluid rounded" alt="Stop Motion GIF" style="object-fit: contain; height: 230px;">
+                                        </div>
+                                    </div>
+                                <?php } else { ?>
+                                    <img src="<?= $imagePath ?>" class="img-fluid rounded mt-2" alt="Photobooth Strip" style="object-fit: contain; height: 260px;">
+                                <?php } ?>
+                            </div>
+
                             <div class="card-body d-flex flex-column justify-content-between text-center p-3">
-                                <small class="text-muted mb-2">
-                                    <?=  date('M d, Y - h:i A', strtotime($photo['created_at'])) ?>
+                                <small class="text-muted mb-3">
+                                    <?= date('M d, Y - h:i A', strtotime($photo['created_at'])) ?>
                                 </small>
 
-                                <div class="d-flex gap-2">
+                                <div class="d-flex flex-column gap-2">
                                     <a href="<?= $imagePath ?>" download class="btn btn-sm btn-outline-success fw-bold w-100">
-                                        📥 Download
+                                        📥 Download Strip
                                     </a>
                                     
+                                    <?php if ($gifPath && file_exists($gifPath)) { ?>
+                                        <a href="<?= $gifPath ?>" download class="btn btn-sm btn-outline-primary fw-bold w-100">
+                                            🎞️ Download GIF
+                                        </a>
+                                    <?php } ?>
+
                                     <?php if ($isAdmin) { ?>
-                                        <form action="delete_photo.php" method="POST" onsubmit="return confirm('Delete this photo permanently?');">
+                                        <form action="delete_photo.php" method="POST" class="mt-1" onsubmit="return confirm('Delete this photo & GIF permanently?');">
                                             <input type="hidden" name="photo_id" value="<?= $photo['id'] ?>">
-                                            <button type="submit" class="btn btn-sm btn-outline-danger fw-bold">🗑️</button>
+                                            <button type="submit" class="btn btn-sm btn-outline-danger fw-bold w-100">🗑️ Delete Entry</button>
                                         </form>
                                     <?php } ?>
                                 </div>

@@ -2,28 +2,29 @@ document.addEventListener('DOMContentLoaded', () => {
     // 1. DOM Elements
     const video = document.getElementById('webcam');
     const preview = document.getElementById('preview');
+    const gifPreview = document.getElementById('gif-preview');
     const snapBtn = document.getElementById('snap-btn');
     const filterSelect = document.getElementById('filter-select');
+    const fisheyeToggle = document.getElementById('fisheye-toggle');
     const stickerSelect = document.getElementById('sticker-select');
     const frameColorInput = document.getElementById('frame-color');
     const textColorInput = document.getElementById('text-color');
     const timerDisplay = document.getElementById('timer-display');
     const downloadBtn = document.getElementById('download-btn');
+    const downloadGifBtn = document.getElementById('download-gif-btn');
     const qrWrapper = document.getElementById('qrcode-wrapper');
     const qrContainer = document.getElementById('qrcode');
     const cameraSelect = document.getElementById('cameraSelect');
     
-    // Preview Canvas Elements
     const previewCanvas = document.getElementById('stripPreviewCanvas');
     const previewCtx = previewCanvas ? previewCanvas.getContext('2d') : null;
 
     let currentStream = null;
 
-    // Fixed internal frame aspect ratio standards (Standard 4:3 Laptop/Photobooth slot)
     const TARGET_SLOT_WIDTH = 640;
     const TARGET_SLOT_HEIGHT = 480;
 
-    // Helper: Maps dropdown values to their respective CSS filter values
+    // 2. CSS Color Filters Mapping
     function getSelectedFilterCSS() {
         const val = filterSelect.value;
         switch (val) {
@@ -39,14 +40,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 return 'brightness(115%) contrast(85%) blur(0.5px) saturate(110%)';
             case 'bw-flash':
                 return 'grayscale(100%) brightness(140%) contrast(160%)';
-            case 'pink-flash':
-                return 'url(#svg-pink-flash) brightness(115%) contrast(120%)';
-            case 'cyber-blue':
-                return 'url(#svg-cyber-blue) brightness(105%) contrast(125%)';
             case 'polaroid':
                 return 'sepia(20%) contrast(110%) brightness(110%) saturate(90%)';
             case 'retro-vhs':
                 return 'contrast(130%) saturate(160%) hue-rotate(15deg)';
+            case 'pink-flash':
+                return 'url(#svg-pink-flash) brightness(115%) contrast(120%)';
+            case 'cyber-blue':
+                return 'url(#svg-cyber-blue) brightness(105%) contrast(125%)';
             case 'thermal':
                 return 'url(#svg-thermal)';
             default:
@@ -54,7 +55,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Helper: Center-crops video frame to fit uniform slot sizes regardless of mobile/desktop orientation
     function drawCroppedVideo(ctx, videoEl, destX, destY, destWidth, destHeight) {
         const vWidth = videoEl.videoWidth || destWidth;
         const vHeight = videoEl.videoHeight || destHeight;
@@ -75,38 +75,100 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.drawImage(videoEl, srcX, srcY, srcWidth, srcHeight, destX, destY, destWidth, destHeight);
     }
 
-    // Helper: Creates a baked filtered canvas frame compatible across iOS/iPadOS Safari and Desktop
+    // 3. Background-Only Circular Fisheye Algorithm (Shields Center Subject)
+    function applyBackgroundFisheye(ctx, width, height) {
+        const srcData = ctx.getImageData(0, 0, width, height);
+        const dstData = ctx.createImageData(width, height);
+        
+        const src = srcData.data;
+        const dst = dstData.data;
+        
+        const centerX = width / 2;
+        const centerY = height / 2;
+        const radius = Math.min(centerX, centerY) * 0.95; 
+
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                const dx = (x - centerX) / radius;
+                const dy = (y - centerY) / radius;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                const dstIdx = (y * width + x) * 4;
+
+                if (distance <= 1.0) {
+                    let factor = 1.0;
+
+                    // Inner 40% area (where person/face is) stays completely 1:1 unwarped
+                    if (distance > 0.4) {
+                        // Beyond center, smoothly accelerate distortion into the background outer ring
+                        const bgRatio = (distance - 0.4) / 0.6;
+                        factor = 1.0 + Math.pow(bgRatio, 2) * 0.65;
+                    }
+
+                    let srcX = Math.floor(centerX + dx * factor * radius);
+                    let srcY = Math.floor(centerY + dy * factor * radius);
+
+                    // Clamp pixel coordinates within boundaries
+                    srcX = Math.max(0, Math.min(width - 1, srcX));
+                    srcY = Math.max(0, Math.min(height - 1, srcY));
+
+                    const srcIdx = (srcY * width + srcX) * 4;
+
+                    // Smooth edge vignette transition
+                    let vignette = 1.0;
+                    if (distance > 0.88) {
+                        vignette = (1.0 - distance) / 0.12; 
+                    }
+
+                    dst[dstIdx]     = src[srcIdx] * vignette;     
+                    dst[dstIdx + 1] = src[srcIdx + 1] * vignette; 
+                    dst[dstIdx + 2] = src[srcIdx + 2] * vignette; 
+                    dst[dstIdx + 3] = 255;                        
+                } else {
+                    // Solid black circular frame
+                    dst[dstIdx]     = 0;   
+                    dst[dstIdx + 1] = 0;   
+                    dst[dstIdx + 2] = 0;   
+                    dst[dstIdx + 3] = 255; 
+                }
+            }
+        }
+
+        ctx.putImageData(dstData, 0, 0);
+    }
+
     function createFilteredFrameCanvas(sourceVideo, width, height) {
-        const tempCanvas = document.createElement('canvas');
-        const tempCtx = tempCanvas.getContext('2d');
-        tempCanvas.width = width;
-        tempCanvas.height = height;
+        const rawCanvas = document.createElement('canvas');
+        const rawCtx = rawCanvas.getContext('2d');
+        rawCanvas.width = width;
+        rawCanvas.height = height;
 
-        // Apply clean cropped video feed first
-        drawCroppedVideo(tempCtx, sourceVideo, 0, 0, width, height);
+        drawCroppedVideo(rawCtx, sourceVideo, 0, 0, width, height);
 
-        // Create secondary offscreen canvas to force filter baking
         const bakedCanvas = document.createElement('canvas');
         const bakedCtx = bakedCanvas.getContext('2d');
         bakedCanvas.width = width;
         bakedCanvas.height = height;
 
-        const currentFilter = getSelectedFilterCSS();
         try {
-            bakedCtx.filter = currentFilter;
+            bakedCtx.filter = getSelectedFilterCSS();
         } catch (e) {
             bakedCtx.filter = 'none';
         }
 
-        bakedCtx.drawImage(tempCanvas, 0, 0);
+        bakedCtx.drawImage(rawCanvas, 0, 0);
+
+        if (fisheyeToggle && fisheyeToggle.checked) {
+            applyBackgroundFisheye(bakedCtx, width, height);
+        }
+
         return bakedCanvas;
     }
 
-    // 2. Real-Time Live Preview Loop
+    // 4. Preview & Render Engine
     function renderLivePreview() {
         if (!previewCanvas || !previewCtx) return;
 
-        // Draw Background Frame Color
         previewCtx.fillStyle = frameColorInput.value;
         previewCtx.fillRect(0, 0, previewCanvas.width, previewCanvas.height);
 
@@ -115,13 +177,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const xOffset = 20;
         const yPositions = [20, 175, 330];
 
-        // Process live filtered frame canvas
         let liveFilteredFrame = null;
         if (video.readyState === video.HAVE_ENOUGH_DATA) {
             liveFilteredFrame = createFilteredFrameCanvas(video, frameWidth, frameHeight);
         }
 
-        // Draw camera video feed into 3 slots
         yPositions.forEach((y) => {
             if (liveFilteredFrame) {
                 previewCtx.drawImage(liveFilteredFrame, xOffset, y, frameWidth, frameHeight);
@@ -130,7 +190,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 previewCtx.fillRect(xOffset, y, frameWidth, frameHeight);
             }
 
-            // Draw chosen sticker preview
             const selectedSticker = stickerSelect.value;
             if (selectedSticker !== 'none') {
                 previewCtx.fillStyle = textColorInput.value;
@@ -139,7 +198,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        // Draw Live Footer Text
         previewCtx.fillStyle = textColorInput.value;
         previewCtx.font = "bold 16px sans-serif";
         previewCtx.textAlign = "center";
@@ -155,11 +213,10 @@ document.addEventListener('DOMContentLoaded', () => {
         renderLivePreview();
     });
 
-    // 3. Camera Initialization
+    // 5. Camera Setup
     async function initCamera() {
         try {
             await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-
             const devices = await navigator.mediaDevices.enumerateDevices();
             const videoDevices = devices.filter(device => device.kind === 'videoinput');
 
@@ -208,7 +265,7 @@ document.addEventListener('DOMContentLoaded', () => {
             currentStream = await navigator.mediaDevices.getUserMedia(constraints);
             video.srcObject = currentStream;
         } catch (err) {
-            alert("Could not start selected camera stream: " + err.message);
+            alert("Could not start camera stream: " + err.message);
         }
     }
 
@@ -218,23 +275,47 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Live update camera feed filter
     filterSelect.addEventListener('change', () => {
         video.style.filter = getSelectedFilterCSS();
     });
 
-    // 4. Photo Capture & Assembly Logic
+    // 6. Photo Capture & Assembly Logic
     const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
     function captureSingleShot() {
         return new Promise((resolve) => {
-            // Generates a fully baked filtered frame canvas
             const filteredCanvas = createFilteredFrameCanvas(video, TARGET_SLOT_WIDTH, TARGET_SLOT_HEIGHT);
-
-            // Convert baked canvas into an Image element for master strip assembly
             const img = new Image();
             img.onload = () => resolve(img);
             img.src = filteredCanvas.toDataURL('image/png');
+        });
+    }
+
+    function generateStopMotionGIF(images) {
+        return new Promise((resolve) => {
+            const frameDataUrls = images.map(img => {
+                const canvas = document.createElement('canvas');
+                canvas.width = img.width;
+                canvas.height = img.height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0);
+                return canvas.toDataURL('image/png');
+            });
+
+            gifshot.createGIF({
+                images: frameDataUrls,
+                gifWidth: TARGET_SLOT_WIDTH,
+                gifHeight: TARGET_SLOT_HEIGHT,
+                interval: 0.3, 
+                numWorkers: 2
+            }, function (obj) {
+                if (!obj.error) {
+                    resolve(obj.image); 
+                } else {
+                    console.error("GIF Generation failed:", obj.error);
+                    resolve(null);
+                }
+            });
         });
     }
 
@@ -262,19 +343,34 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const stripDataUrl = assemblePhotoStrip(capturedImages);
             
-            // Hide preview canvas and show captured image output
             if (previewCanvas) previewCanvas.style.display = "none";
+            
             const previewTitle = document.getElementById('preview-title');
-            if (previewTitle) previewTitle.textContent = "Your Photo Strip";
+            if (previewTitle) previewTitle.textContent = "Your Photo Strip & Stop-Motion GIF";
 
             preview.src = stripDataUrl;
             preview.style.display = "block";
 
-            // Set fallback direct download href immediately
-            downloadBtn.href = stripDataUrl;
-            downloadBtn.style.display = 'inline-block';
+            if (downloadBtn) {
+                downloadBtn.href = stripDataUrl;
+                downloadBtn.style.display = 'inline-block';
+            }
 
-            uploadPhoto(stripDataUrl);
+            const gifDataUrl = await generateStopMotionGIF(capturedImages);
+            
+            if (gifDataUrl) {
+                if (gifPreview) {
+                    gifPreview.src = gifDataUrl;
+                    gifPreview.style.display = 'block';
+                }
+                if (downloadGifBtn) {
+                    downloadGifBtn.href = gifDataUrl;
+                    downloadGifBtn.style.display = 'inline-block';
+                }
+            }
+
+            uploadPhotosToGallery(stripDataUrl, gifDataUrl);
+
         } catch (error) {
             console.error("Error during capture sequence:", error);
         } finally {
@@ -286,7 +382,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const masterCanvas = document.createElement('canvas');
         const ctx = masterCanvas.getContext('2d');
 
-        // Uniform slot dimensions guarantees identical strip size on smartphones and laptops
         const photoWidth = TARGET_SLOT_WIDTH;
         const photoHeight = TARGET_SLOT_HEIGHT;
 
@@ -327,20 +422,20 @@ document.addEventListener('DOMContentLoaded', () => {
         return masterCanvas.toDataURL('image/png');
     }
 
-    async function uploadPhoto(base64Data) {
+    async function uploadPhotosToGallery(stripData, gifData) {
         try {
             const response = await fetch('upload.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ image: base64Data })
+                body: JSON.stringify({ 
+                    image: stripData,
+                    gif: gifData 
+                })
             });
 
             const result = await response.json();
 
-            if (result.success) {
-                downloadBtn.href = base64Data;
-                downloadBtn.style.display = 'inline-block';
-
+            if (result.success && qrContainer) {
                 qrContainer.innerHTML = "";
                 new QRCode(qrContainer, {
                     text: result.url,
@@ -352,7 +447,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.warn('Upload failed:', result.error);
             }
         } catch (err) {
-            console.error('Upload Error:', err);
+            console.error('Gallery Upload Error:', err);
         }
     }
 

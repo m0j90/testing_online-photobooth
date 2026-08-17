@@ -14,7 +14,11 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"></script>
     <!-- QRCode.js Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-</head>
+    <!-- Gifshot Library for Animated GIF Generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gifshot/0.3.2/gifshot.min.js"></script>
+    <!-- MediaPipe Face Detection Scripts -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_detection/face_detection.js" crossorigin="anonymous"></script>
 </head>
 <body>
 
@@ -66,14 +70,13 @@
                             <div id="timer-display" class="display-1 position-absolute top-50 start-50 translate-middle text-warning fw-bold"></div>
                         </div>
 
-                        <div class="row g-3 text-start">
+                        <div class="row g-3 text-start mt-1">
                             <div class="col-md-6">
                                 <label for="filter-select" class="form-label fw-medium">Color Filter</label>
                                 <select id="filter-select" class="form-select">
                                     <option value="none">Normal</option>
                                     <option value="grayscale(100%)">Grayscale</option>
                                     <option value="sepia(100%)">Sepia</option>
-
                                     <option value="y2k-flash">Y2K Flash</option>
                                     <option value="digital-cam">Digital Camera</option>
                                     <option value="disposable-cam">Disposable Cam</option>
@@ -86,6 +89,11 @@
                                     <option value="retro-vhs">Retro VHS</option>
                                     <option value="thermal">Thermal</option>
                                 </select>
+
+                                <div class="form-check mt-2">
+                                    <input type="checkbox" id="fisheye-toggle" class="form-check-input">
+                                    <label for="fisheye-toggle" class="form-check-label fw-medium">Circular Fisheye</label>
+                                </div>
                             </div>
 
                             <div class="col-md-6">
@@ -122,17 +130,24 @@
 
             <div class="col-lg-5">
                 <div class="card shadow-sm border-0 text-center h-100">
-                    <div class="card-body p-4 d-flec flex column align-items-center justify-content-center">
+                    <div class="card-body p-4 d-flex flex-column align-items-center justify-content-center">
 
                         <h5 class="card-title mb-3 fw-bold text-secondary" id="preview-title">Live Strip Preview</h5>
 
+                        <!-- Live preview before capture -->
                         <canvas id="stripPreviewCanvas" width="240" height="600" class="rounded shadow-sm mb-3 border w-100" style="max-width: 240px; height: auto;"></canvas>
 
+                        <!-- Outputs after capture -->
                         <img id="preview" class="img-fluid rounded shadow-sm mb-3" alt="Captured Strip" style="max-height: 400px; display: none;" />
+                        <img id="gif-preview" class="img-fluid rounded shadow-sm mb-3" alt="Stop Motion GIF" style="max-height: 350px; display: none;" />
 
                         <div class="w-100 mt-2">
-                            <a id="download-btn" class="btn btn-success btn-lg w-100 mb-3 fw-bold shadow-sm" download="photostrip.png" style="display: none;">
-                                📥 Download Strip
+                            <a id="download-btn" class="btn btn-success btn-lg w-100 mb-2 fw-bold shadow-sm" download="photostrip.png" style="display: none;">
+                                📥 Download Photo Strip
+                            </a>
+
+                            <a id="download-gif-btn" class="btn btn-outline-primary btn-lg w-100 mb-3 fw-bold shadow-sm" download="stopmotion.gif" style="display: none;">
+                                🎞️ Download Stop-Motion GIF
                             </a>
 
                             <div id="qrcode-wrapper" class="p-3 bg-light border-rounded text-center" style="display: none;">
@@ -176,7 +191,6 @@
                     0    0    0    1 0" result="gray" />
 
                 <feComponentTransfer in="gray">
-                    <!-- Shifted so lower midtones (skin) register warmer faster -->
                     <feFuncR type="table" tableValues="0.0  0.0  0.2  0.9  1.0  1.0  1.0"/>
                     <feFuncG type="table" tableValues="0.0  0.2  1.0  0.8  0.4  0.0  1.0"/>
                     <feFuncB type="table" tableValues="0.8  1.0  0.2  0.0  0.0  0.0  1.0"/>
