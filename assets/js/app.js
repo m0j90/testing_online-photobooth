@@ -19,6 +19,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let currentStream = null;
 
+    // Fixed internal frame aspect ratio standards (Standard 4:3 Laptop/Photobooth slot)
+    const TARGET_SLOT_WIDTH = 640;
+    const TARGET_SLOT_HEIGHT = 480;
+
     // Helper: Maps dropdown values to their respective CSS filter values
     function getSelectedFilterCSS() {
         const val = filterSelect.value;
@@ -44,12 +48,45 @@ document.addEventListener('DOMContentLoaded', () => {
             case 'retro-vhs':
                 return 'contrast(130%) saturate(160%) hue-rotate(15deg)';
             case 'thermal':
-                // Smooth thermal camera color mapping
                 return 'url(#svg-thermal)';
             default:
-                // Handles 'none', 'grayscale(100%)', and 'sepia(100%)' directly
                 return val;
         }
+    }
+
+    // Helper: Safely applies filters to 2D Canvas without crashing mobile WebKit
+    function applySafeCanvasFilter(ctx) {
+        const filterStr = getSelectedFilterCSS();
+        try {
+            ctx.filter = filterStr;
+        } catch (e) {
+            console.warn("Native canvas filter failed on device, falling back.", e);
+            ctx.filter = 'none';
+        }
+    }
+
+    // Helper: Center-crops video frame to fit uniform slot sizes regardless of mobile/desktop orientation
+    function drawCroppedVideo(ctx, videoEl, destX, destY, destWidth, destHeight) {
+        const vWidth = videoEl.videoWidth || destWidth;
+        const vHeight = videoEl.videoHeight || destHeight;
+        
+        const targetRatio = destWidth / destHeight;
+        const videoRatio = vWidth / vHeight;
+
+        let srcX = 0, srcY = 0, srcWidth = vWidth, srcHeight = vHeight;
+
+        if (videoRatio > targetRatio) {
+            srcWidth = vHeight * targetRatio;
+            srcX = (vWidth - srcWidth) / 2;
+        } else {
+            srcHeight = vWidth / targetRatio;
+            srcY = (vHeight - srcHeight) / 2;
+        }
+
+        ctx.save();
+        applySafeCanvasFilter(ctx);
+        ctx.drawImage(videoEl, srcX, srcY, srcWidth, srcHeight, destX, destY, destWidth, destHeight);
+        ctx.restore();
     }
 
     // 2. Real-Time Live Preview Loop
@@ -68,10 +105,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Draw camera video feed into 3 slots
         yPositions.forEach((y) => {
             if (video.readyState === video.HAVE_ENOUGH_DATA) {
-                previewCtx.save();
-                previewCtx.filter = getSelectedFilterCSS();
-                previewCtx.drawImage(video, xOffset, y, frameWidth, frameHeight);
-                previewCtx.restore();
+                drawCroppedVideo(previewCtx, video, xOffset, y, frameWidth, frameHeight);
             } else {
                 previewCtx.fillStyle = '#333333';
                 previewCtx.fillRect(xOffset, y, frameWidth, frameHeight);
@@ -97,7 +131,6 @@ document.addEventListener('DOMContentLoaded', () => {
         requestAnimationFrame(renderLivePreview);
     }
 
-    // Start Live Preview once Video Stream is ready
     video.addEventListener('loadedmetadata', () => {
         renderLivePreview();
     });
@@ -147,7 +180,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const constraints = {
-            video: deviceId ? { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } } : true,
+            video: deviceId ? { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } } : { facingMode: 'user' },
             audio: false
         };
 
@@ -170,18 +203,19 @@ document.addEventListener('DOMContentLoaded', () => {
         video.style.filter = getSelectedFilterCSS();
     });
 
-    // 4. Photo Capture & Assembly logic
+    // 4. Photo Capture & Assembly Logic
     const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
     function captureSingleShot() {
         return new Promise((resolve) => {
             const tempCanvas = document.createElement('canvas');
             const ctx = tempCanvas.getContext('2d');
-            tempCanvas.width = video.videoWidth || 1280;
-            tempCanvas.height = video.videoHeight || 720;
+            
+            // Standardize output photo resolution across mobile and desktop
+            tempCanvas.width = TARGET_SLOT_WIDTH;
+            tempCanvas.height = TARGET_SLOT_HEIGHT;
 
-            ctx.filter = getSelectedFilterCSS();
-            ctx.drawImage(video, 0, 0, tempCanvas.width, tempCanvas.height);
+            drawCroppedVideo(ctx, video, 0, 0, TARGET_SLOT_WIDTH, TARGET_SLOT_HEIGHT);
 
             const img = new Image();
             img.onload = () => resolve(img);
@@ -202,34 +236,44 @@ document.addEventListener('DOMContentLoaded', () => {
         snapBtn.disabled = true;
         const capturedImages = [];
 
-        for (let shot = 1; shot <= 3; shot++) {
-            await runCountdown(3);
-            const img = await captureSingleShot();
-            capturedImages.push(img);
-            timerDisplay.textContent = "";
-            await delay(500);
+        try {
+            for (let shot = 1; shot <= 3; shot++) {
+                await runCountdown(3);
+                const img = await captureSingleShot();
+                capturedImages.push(img);
+                timerDisplay.textContent = "";
+                await delay(500);
+            }
+
+            const stripDataUrl = assemblePhotoStrip(capturedImages);
+            
+            // Hide preview canvas and show captured image output
+            if (previewCanvas) previewCanvas.style.display = "none";
+            const previewTitle = document.getElementById('preview-title');
+            if (previewTitle) previewTitle.textContent = "Your Photo Strip";
+
+            preview.src = stripDataUrl;
+            preview.style.display = "block";
+
+            // Set fallback direct download href immediately
+            downloadBtn.href = stripDataUrl;
+            downloadBtn.style.display = 'inline-block';
+
+            uploadPhoto(stripDataUrl);
+        } catch (error) {
+            console.error("Error during capture sequence:", error);
+        } finally {
+            snapBtn.disabled = false;
         }
-
-        const stripDataUrl = assemblePhotoStrip(capturedImages);
-        
-        // Hide preview canvas and show captured image output
-        if (previewCanvas) previewCanvas.style.display = "none";
-        const previewTitle = document.getElementById('preview-title');
-        if (previewTitle) previewTitle.textContent = "Your Photo Strip";
-
-        preview.src = stripDataUrl;
-        preview.style.display = "block";
-        snapBtn.disabled = false;
-
-        uploadPhoto(stripDataUrl);
     });
 
     function assemblePhotoStrip(images) {
         const masterCanvas = document.createElement('canvas');
         const ctx = masterCanvas.getContext('2d');
 
-        const photoWidth = images[0].width;
-        const photoHeight = images[0].height;
+        // Uniform slot dimensions guarantees identical strip size on smartphones and laptops
+        const photoWidth = TARGET_SLOT_WIDTH;
+        const photoHeight = TARGET_SLOT_HEIGHT;
 
         const padding = 30;
         const photoGap = 20;
@@ -289,7 +333,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
                 qrWrapper.style.display = 'block';
             } else {
-                alert('Upload failed: ' + result.error);
+                console.warn('Upload failed:', result.error);
             }
         } catch (err) {
             console.error('Upload Error:', err);
