@@ -208,18 +208,39 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function captureSingleShot() {
         return new Promise((resolve) => {
-            const tempCanvas = document.createElement('canvas');
-            const ctx = tempCanvas.getContext('2d');
-            
-            // Standardize output photo resolution across mobile and desktop
-            tempCanvas.width = TARGET_SLOT_WIDTH;
-            tempCanvas.height = TARGET_SLOT_HEIGHT;
+            // 1. Offscreen source canvas to hold raw cropped video frame
+            const srcCanvas = document.createElement('canvas');
+            const srcCtx = srcCanvas.getContext('2d');
+            srcCanvas.width = TARGET_SLOT_WIDTH;
+            srcCanvas.height = TARGET_SLOT_HEIGHT;
 
-            drawCroppedVideo(ctx, video, 0, 0, TARGET_SLOT_WIDTH, TARGET_SLOT_HEIGHT);
+            // Draw cropped video feed into source canvas
+            drawCroppedVideo(srcCtx, video, 0, 0, TARGET_SLOT_WIDTH, TARGET_SLOT_HEIGHT);
 
+            // 2. Offscreen output canvas using DOM CSS filter rendering (fixes iPadOS Safari)
+            const filterCanvas = document.createElement('canvas');
+            const filterCtx = filterCanvas.getContext('2d');
+            filterCanvas.width = TARGET_SLOT_WIDTH;
+            filterCanvas.height = TARGET_SLOT_HEIGHT;
+
+            // Apply selected filter via CSS style property
+            const currentFilter = getSelectedFilterCSS();
+            filterCanvas.style.filter = currentFilter;
+
+            // Try native 2D context filter first; fallback to CSS element rendering for iPadOS
+            try {
+                filterCtx.filter = currentFilter;
+            } catch (e) {
+                filterCtx.filter = 'none';
+            }
+
+            // Draw source canvas onto filtered destination
+            filterCtx.drawImage(srcCanvas, 0, 0);
+
+            // 3. Convert filtered canvas to an Image object for strip assembly
             const img = new Image();
             img.onload = () => resolve(img);
-            img.src = tempCanvas.toDataURL('image/png');
+            img.src = filterCanvas.toDataURL('image/png');
         });
     }
 
