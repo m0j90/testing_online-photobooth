@@ -54,17 +54,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Helper: Safely applies filters to 2D Canvas without crashing mobile WebKit
-    function applySafeCanvasFilter(ctx) {
-        const filterStr = getSelectedFilterCSS();
-        try {
-            ctx.filter = filterStr;
-        } catch (e) {
-            console.warn("Native canvas filter failed on device, falling back.", e);
-            ctx.filter = 'none';
-        }
-    }
-
     // Helper: Center-crops video frame to fit uniform slot sizes regardless of mobile/desktop orientation
     function drawCroppedVideo(ctx, videoEl, destX, destY, destWidth, destHeight) {
         const vWidth = videoEl.videoWidth || destWidth;
@@ -83,10 +72,34 @@ document.addEventListener('DOMContentLoaded', () => {
             srcY = (vHeight - srcHeight) / 2;
         }
 
-        ctx.save();
-        applySafeCanvasFilter(ctx);
         ctx.drawImage(videoEl, srcX, srcY, srcWidth, srcHeight, destX, destY, destWidth, destHeight);
-        ctx.restore();
+    }
+
+    // Helper: Creates a baked filtered canvas frame compatible across iOS/iPadOS Safari and Desktop
+    function createFilteredFrameCanvas(sourceVideo, width, height) {
+        const tempCanvas = document.createElement('canvas');
+        const tempCtx = tempCanvas.getContext('2d');
+        tempCanvas.width = width;
+        tempCanvas.height = height;
+
+        // Apply clean cropped video feed first
+        drawCroppedVideo(tempCtx, sourceVideo, 0, 0, width, height);
+
+        // Create secondary offscreen canvas to force filter baking
+        const bakedCanvas = document.createElement('canvas');
+        const bakedCtx = bakedCanvas.getContext('2d');
+        bakedCanvas.width = width;
+        bakedCanvas.height = height;
+
+        const currentFilter = getSelectedFilterCSS();
+        try {
+            bakedCtx.filter = currentFilter;
+        } catch (e) {
+            bakedCtx.filter = 'none';
+        }
+
+        bakedCtx.drawImage(tempCanvas, 0, 0);
+        return bakedCanvas;
     }
 
     // 2. Real-Time Live Preview Loop
@@ -102,10 +115,16 @@ document.addEventListener('DOMContentLoaded', () => {
         const xOffset = 20;
         const yPositions = [20, 175, 330];
 
+        // Process live filtered frame canvas
+        let liveFilteredFrame = null;
+        if (video.readyState === video.HAVE_ENOUGH_DATA) {
+            liveFilteredFrame = createFilteredFrameCanvas(video, frameWidth, frameHeight);
+        }
+
         // Draw camera video feed into 3 slots
         yPositions.forEach((y) => {
-            if (video.readyState === video.HAVE_ENOUGH_DATA) {
-                drawCroppedVideo(previewCtx, video, xOffset, y, frameWidth, frameHeight);
+            if (liveFilteredFrame) {
+                previewCtx.drawImage(liveFilteredFrame, xOffset, y, frameWidth, frameHeight);
             } else {
                 previewCtx.fillStyle = '#333333';
                 previewCtx.fillRect(xOffset, y, frameWidth, frameHeight);
@@ -114,6 +133,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Draw chosen sticker preview
             const selectedSticker = stickerSelect.value;
             if (selectedSticker !== 'none') {
+                previewCtx.fillStyle = textColorInput.value;
                 previewCtx.font = "20px sans-serif";
                 previewCtx.fillText(selectedSticker, xOffset + 10, y + 25);
             }
@@ -208,39 +228,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function captureSingleShot() {
         return new Promise((resolve) => {
-            // 1. Offscreen source canvas to hold raw cropped video frame
-            const srcCanvas = document.createElement('canvas');
-            const srcCtx = srcCanvas.getContext('2d');
-            srcCanvas.width = TARGET_SLOT_WIDTH;
-            srcCanvas.height = TARGET_SLOT_HEIGHT;
+            // Generates a fully baked filtered frame canvas
+            const filteredCanvas = createFilteredFrameCanvas(video, TARGET_SLOT_WIDTH, TARGET_SLOT_HEIGHT);
 
-            // Draw cropped video feed into source canvas
-            drawCroppedVideo(srcCtx, video, 0, 0, TARGET_SLOT_WIDTH, TARGET_SLOT_HEIGHT);
-
-            // 2. Offscreen output canvas using DOM CSS filter rendering (fixes iPadOS Safari)
-            const filterCanvas = document.createElement('canvas');
-            const filterCtx = filterCanvas.getContext('2d');
-            filterCanvas.width = TARGET_SLOT_WIDTH;
-            filterCanvas.height = TARGET_SLOT_HEIGHT;
-
-            // Apply selected filter via CSS style property
-            const currentFilter = getSelectedFilterCSS();
-            filterCanvas.style.filter = currentFilter;
-
-            // Try native 2D context filter first; fallback to CSS element rendering for iPadOS
-            try {
-                filterCtx.filter = currentFilter;
-            } catch (e) {
-                filterCtx.filter = 'none';
-            }
-
-            // Draw source canvas onto filtered destination
-            filterCtx.drawImage(srcCanvas, 0, 0);
-
-            // 3. Convert filtered canvas to an Image object for strip assembly
+            // Convert baked canvas into an Image element for master strip assembly
             const img = new Image();
             img.onload = () => resolve(img);
-            img.src = filterCanvas.toDataURL('image/png');
+            img.src = filteredCanvas.toDataURL('image/png');
         });
     }
 
@@ -314,6 +308,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const selectedSticker = stickerSelect.value;
             if (selectedSticker !== 'none') {
+                ctx.fillStyle = textColorInput.value;
                 ctx.font = "48px sans-serif";
                 ctx.fillText(selectedSticker, x + 20, y + 50);
                 ctx.fillText(selectedSticker, x + photoWidth - 60, y + photoHeight - 20);
